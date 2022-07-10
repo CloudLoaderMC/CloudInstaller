@@ -1,0 +1,14 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+        mavenLocal()
+        maven { url = 'https://maven.minecraftforge.net/' }
+        maven {
+            url = "https://maven.fabricmc.net"
+            name = "FabricMC"
+        }
+    }
+}
+
+rootProject.name = 'CloudInstaller'

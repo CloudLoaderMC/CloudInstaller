@@ -1,0 +1,193 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.guardsquare:proguard-gradle:7.1.0'
+        classpath 'net.minecraftforge:GradleUtils:1.+'
+    }
+}
+
+plugins {
+    id 'java'
+    id 'maven-publish'
+    id "checkstyle"
+    id 'eclipse'
+    id 'idea'
+    id "com.github.johnrengelman.shadow" version "7.0.0"
+    id "org.cadixdev.licenser" version "0.6.1"
+    id "de.undercouch.download" version "4.1.2"
+    id "me.modmuss50.remotesign" version "0.1.0"
+    id 'net.minecraftforge.gradleutils' version '2.+'
+}
+
+apply plugin: 'net.minecraftforge.gradleutils'
+
+repositories {
+    maven {
+        name = 'Fabric'
+        url = 'https://maven.fabricmc.net/'
+    }
+    mavenCentral()
+}
+
+group = 'ml.darubyminer360'
+archivesBaseName = 'installer'
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+license {
+  header project.file('LICENSE-header.txt')
+  include 'ml/darubyminer360/cloudinstaller/**/*.java'
+  newLine false
+}
+
+version = gradleutils.getTagOffsetBranchVersion(null, 'master', 'HEAD', '2.0')
+println('Installer Version: ' + version)
+
+ext {
+    SPEC_VERSION = gradleutils.gitInfo.tag
+    MAIN_CLASS = 'ml.darubyminer360.cloudinstaller.SimpleInstaller'
+    MANIFEST = manifest{
+        attributes('Main-Class': MAIN_CLASS)
+        attributes([
+            'Specification-Title':      'Cloud Installer',
+            'Specification-Vendor':     'Cloud Team',
+            'Specification-Version':    SPEC_VERSION,
+            'Implementation-Title':     'Cloud Installer',
+            'Implementation-Version':   project.version,
+            'Implementation-Vendor':    'Cloud Team'
+        ] as LinkedHashMap, 'ml/darubyminer360/cloudinstaller/')
+    }
+}
+
+dependencies {
+    implementation 'net.sf.jopt-simple:jopt-simple:5.0.4'
+    implementation 'com.google.code.gson:gson:2.8.7'
+	testImplementation(platform('org.junit:junit-bom:5.7.2'))
+	testImplementation('org.junit.jupiter:junit-jupiter')
+}
+
+test {
+  useJUnitPlatform()
+  testLogging {
+    events "passed", "skipped", "failed"
+  }
+}
+
+compileJava {
+    options.encoding = 'UTF-8'
+}
+
+task sourcesJar(type: Jar, dependsOn: classes) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+    manifest.from(MANIFEST)
+}
+
+shadowJar {
+    classifier 'fatjar'
+    manifest.from(MANIFEST)
+}
+
+task pgShrinkJar(type: proguard.gradle.ProGuardTask, dependsOn: shadowJar) {
+    ext {
+        inputJar = shadowJar.archiveFile.get().asFile
+        outDir = file("${buildDir}/proguard")
+        obfuscatedJar = "${outDir}/${jar.archiveBaseName}.jar"
+        config = 'proguard.pro'
+    }
+    inputs.file inputJar
+    inputs.file config
+    
+    outDir.mkdirs()
+
+    injars inputJar
+    outjars obfuscatedJar
+
+    // Automatically handle the Java version of this build.
+    if (System.getProperty('java.version').startsWith('1.')) {
+        // Before Java 9, the runtime classes were packaged in a single jar file.
+        libraryjars "${System.getProperty('java.home')}/lib/rt.jar"
+    } else {
+        // As of Java 9, the runtime classes are packaged in modular jmod files.
+        libraryjars "${System.getProperty('java.home')}/jmods/java.base.jmod", jarfilter: '!**.jar', filter: '!module-info.class'
+        libraryjars "${System.getProperty('java.home')}/jmods/java.desktop.jmod", jarfilter: '!**.jar', filter: '!module-info.class'
+        libraryjars "${System.getProperty('java.home')}/jmods/java.logging.jmod", jarfilter: '!**.jar', filter: '!module-info.class'
+        libraryjars "${System.getProperty('java.home')}/jmods/jdk.unsupported.jmod", jarfilter: '!**.jar', filter: '!module-info.class'
+    }
+    configuration config
+}
+
+task shrinkJar(type: Jar, dependsOn: pgShrinkJar) {
+    classifier = 'shrunk'
+    from zipTree(pgShrinkJar.obfuscatedJar)
+    manifest.from(MANIFEST)
+}
+
+artifacts {
+    //archives shadowJar
+    archives sourcesJar
+    archives shrinkJar
+}
+
+jar {
+    manifest.from(MANIFEST)
+}
+
+task testJar(type: Jar, dependsOn: shrinkJar) {
+    from zipTree(shrinkJar.archiveFile.get().asFile)
+    from sourceSets.test.output
+    classifier 'test'
+    manifest.from(MANIFEST)
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifact sourcesJar
+            artifact shrinkJar
+            artifact jar
+            pom {
+                name = project.archivesBaseName
+                packaging = 'jar'
+                description = 'Cloud Installer'
+                url = 'https://github.com/CloudLoaderMC/CloudInstaller'
+
+                scm {
+                    url = 'https://github.com/CloudLoaderMC/CloudInstaller'
+                    connection = 'scm:git:git://github.com/CloudLoaderMC/CloudInstaller.git'
+                    developerConnection = 'scm:git:git@github.com:CloudLoaderMC/CloudInstaller.git'
+                }
+
+                issueManagement {
+                    system = 'github'
+                    url = 'https://github.com/CloudLoaderMC/CloudInstaller/issues'
+                }
+
+                developers {
+                    developer {
+                        id = 'DaRubyMiner360'
+                        name = 'DaRubyMiner360'
+                    }
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            if (System.env.MAVEN_USER) {
+                url 'https://maven.minecraftforge.net/'
+                authentication {
+                    basic(BasicAuthentication)
+                }
+                credentials {
+                    username = System.env.MAVEN_USER ?: 'not'
+                    password = System.env.MAVEN_PASSWORD ?: 'set'
+                }
+            } else {
+                url 'file://' + rootProject.file('repo').getAbsolutePath()
+            }
+        }
+    }
+}
