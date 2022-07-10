@@ -33,7 +33,7 @@ repositories {
 }
 
 group = 'ml.darubyminer360'
-archivesBaseName = 'installer'
+archivesBaseName = 'cloudinstaller'
 java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
 license {
@@ -42,7 +42,7 @@ license {
   newLine false
 }
 
-version = gradleutils.getTagOffsetBranchVersion(null, 'master', 'HEAD', '2.0')
+version = gradleutils.getTagOffsetBranchVersion(null, 'main', 'HEAD', '2.0')
 println('Installer Version: ' + version)
 
 ext {
